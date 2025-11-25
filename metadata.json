@@ -1,0 +1,8 @@
+{
+  "name": "Copy of Analogista Virtuale di Max Pisani 2025",
+  "description": "An interactive web application based on the analogical disciplines of Stefano Benemeglio, designed by Massimo Pisani. This app guides users through a series of tests to dialogue with their unconscious, identify blocks, and understand their emotional state.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

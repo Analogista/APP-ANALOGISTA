@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <title>Analogista Virtuale di Max Pisani</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.0"
+  }
+}
+</script>
+<style>
+      @keyframes bounce-short {
+        0%, 100% {
+          transform: translateY(0);
+          animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+        }
+        50% {
+          transform: translateY(-15%);
+          animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+        }
+      }
+      .animate-bounce-short {
+        animation: bounce-short 1.5s infinite;
+      }
+      @media print {
+        body {
+            background-color: white;
+        }
+        nav, header, .no-print, button {
+            display: none !important;
+        }
+        #root {
+            padding: 0 !important;
+            max-width: 100% !important;
+        }
+        main {
+            padding: 0 !important;
+        }
+        /* Reset Result Card styles for cleaner print */
+        .shadow-md, .shadow-lg {
+            box-shadow: none !important;
+        }
+        .bg-gray-50 {
+            background-color: white !important;
+        }
+      }
+</style>
+</head>
+  <body class="bg-slate-100">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
