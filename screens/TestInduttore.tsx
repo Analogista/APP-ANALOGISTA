@@ -131,6 +131,13 @@ const TestInduttore: React.FC<ScreenProps> = ({ setPage }) => {
         <button onClick={() => setPage(0)} className="text-sm text-blue-600 hover:underline flex-shrink-0 ml-4 mt-1">&larr; Torna alla home</button>
       </div>
       
+      <div className="mb-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+          <h4 className="font-bold text-gray-800 mb-2">Grillo e Lucignolo: Emblemi di Regole e Trasgressione</h4>
+          <p className="text-gray-700 text-sm">
+              Il Grillo e Lucignolo sono due personaggi mutuati dalla storia di Pinocchio e utilizzati nella metodologia analogica, da Max Pisani, come emblemi istituzionali e trasgressivi che rappresentano due diverse "vocine" dentro di noi che ci spingono a Trasgredire o rispettare le Regole. Essi rappresentano metaforicamente due facce della stessa medaglia: la costante lotta interiore dell'individuo tra il dovere e il piacere. Scopri chi dei 2 prevale in questa fase della tua vita.
+          </p>
+      </div>
+      
       <InfoBox>
         <p>Questo test determina la tua fase attuale. Stai in piedi di profilo. Ascolta attentamente le istruzioni vocali prima di iniziare.</p>
       </InfoBox>
