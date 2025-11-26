@@ -1,11 +1,10 @@
-
 import React, { useEffect, useState } from 'react';
-import { playFeedbackSound } from '../utils/sound';
 
 interface CameraViewProps {
   videoRef: React.RefObject<HTMLVideoElement>;
   onReady?: () => void;
   onError?: (error: string) => void;
+  enableDistanceCheck?: boolean; // Kept interface compatible though not used in snippet
 }
 
 const CameraView: React.FC<CameraViewProps> = ({ videoRef, onReady, onError }) => {
@@ -13,10 +12,6 @@ const CameraView: React.FC<CameraViewProps> = ({ videoRef, onReady, onError }) =
   const [highlight, setHighlight] = useState<'left' | 'right' | null>(null);
   const [shoulderPosition, setShoulderPosition] = useState<{x: number, y: number} | null>(null);
   const [detectedText, setDetectedText] = useState<string | null>(null);
-  
-  // Gauge State
-  const [gaugeLevel, setGaugeLevel] = useState({ intensity: 0, direction: 'none' });
-  const MAX_INTENSITY = 5000; // Approximate max value for gauge scaling
 
   useEffect(() => {
     const initializeCamera = async () => {
@@ -58,17 +53,25 @@ const CameraView: React.FC<CameraViewProps> = ({ videoRef, onReady, onError }) =
 
     const handleMovement = (event: CustomEvent) => {
         const direction = event.detail.direction;
+        
+        // Logic for Mirrored View (-scale-x-100)
+        // Forward (SI) -> Screen Right -> Highlight Right (Green)
+        // Backward (NO) -> Screen Left -> Highlight Left (Red)
+        
         if (direction === 'forward') {
             setHighlight('right');
             setDetectedText('SI / AVANTI');
-            playFeedbackSound('positive'); // Audio Feedback
         } else if (direction === 'backward') {
             setHighlight('left');
             setDetectedText('NO / INDIETRO');
-            playFeedbackSound('negative'); // Audio Feedback
+        } else {
+            // Neutral state
+            setHighlight(null);
+            setDetectedText(null);
         }
 
         if (highlightTimeoutId) clearTimeout(highlightTimeoutId);
+        // Reset highlight after a bit if no new events come in (optional, but keep it snappy)
         highlightTimeoutId = window.setTimeout(() => setHighlight(null), 500);
         
         if (textTimeoutId) clearTimeout(textTimeoutId);
@@ -86,13 +89,6 @@ const CameraView: React.FC<CameraViewProps> = ({ videoRef, onReady, onError }) =
     };
     window.addEventListener('movementCenterUpdate', handleMovementCenter);
 
-    // Listen for real-time levels for the gauge
-    const handleLevel = (event: CustomEvent) => {
-        const { intensity, direction } = event.detail;
-        setGaugeLevel({ intensity, direction });
-    };
-    window.addEventListener('movementLevel', handleLevel);
-
     return () => {
       if (videoRef.current && videoRef.current.srcObject) {
         const stream = videoRef.current.srcObject as MediaStream;
@@ -100,89 +96,86 @@ const CameraView: React.FC<CameraViewProps> = ({ videoRef, onReady, onError }) =
       }
       window.removeEventListener('movementDetected', handleMovement);
       window.removeEventListener('movementCenterUpdate', handleMovementCenter);
-      window.removeEventListener('movementLevel', handleLevel);
       if (highlightTimeoutId) clearTimeout(highlightTimeoutId);
       if (textTimeoutId) clearTimeout(textTimeoutId);
     };
   }, [videoRef, onReady, onError]);
 
-  // Calculate gauge widths
-  const normalizedIntensity = Math.min(gaugeLevel.intensity / MAX_INTENSITY, 1) * 100;
-  const leftWidth = gaugeLevel.direction === 'backward' ? `${normalizedIntensity}%` : '0%';
-  const rightWidth = gaugeLevel.direction === 'forward' ? `${normalizedIntensity}%` : '0%';
-
   return (
-    <div className="relative w-full max-w-lg mx-auto bg-black rounded-lg overflow-hidden flex flex-col shadow-2xl">
-      {/* Video Container */}
-      <div className="relative w-full h-[60vh] sm:h-[400px] bg-black flex items-center justify-center">
-        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover transform -scale-x-100" />
-        {error && <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center p-4"><p className="text-red-500 text-center">{error}</p></div>}
+    <div className="relative w-full max-w-lg mx-auto h-[75vh] bg-black rounded-lg overflow-hidden flex items-center justify-center text-white border-2 border-gray-800 shadow-2xl">
+      <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover transform -scale-x-100 opacity-90" />
+      {error && <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center p-4"><p className="text-red-500 text-center">{error}</p></div>}
+      
+      {/* Visual Feedback Overlays (Highlights) */}
+      {highlight && (
+        <div className={`absolute top-0 h-full w-1/2 transition-opacity duration-200 ${
+          highlight === 'right' ? 'right-0 bg-green-500 bg-opacity-30' : 'left-0 bg-red-500 bg-opacity-30'
+        }`}></div>
+      )}
+
+      {/* Detected Text Overlay (Center Popup) */}
+      {detectedText && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-300 z-50">
+              <span className={`px-8 py-4 rounded-xl text-white font-black text-4xl shadow-[0_0_20px_rgba(0,0,0,0.5)] border-2 ${
+                  detectedText.includes('SI') 
+                    ? 'bg-green-600 bg-opacity-90 border-green-300' 
+                    : 'bg-red-600 bg-opacity-90 border-red-300'
+              }`}>
+                  {detectedText}
+              </span>
+          </div>
+      )}
+
+      {/* Static Overlay with Guidelines and Text Stacks */}
+      <div className="absolute inset-0 flex justify-between items-center p-2 pointer-events-none">
         
-        {/* Visual Feedback Overlays */}
-        {highlight && (
-            <div className={`absolute top-0 h-full w-1/2 ${
-            highlight === 'right' ? 'right-0 bg-green-500 bg-opacity-40' : 'left-0 bg-red-500 bg-opacity-40'
-            }`}></div>
-        )}
+        {/* LEFT SIDE - RETRO (NO) */}
+        <div className="h-full relative flex flex-col items-center pt-4" style={{ width: '25%' }}>
+          {/* Vertical Dashed Line */}
+          <div className="absolute top-0 right-0 h-full w-0 border-r-2 border-red-500 border-dashed opacity-70"></div>
+          
+          {/* Top Label */}
+          <div className="bg-black bg-opacity-70 px-3 py-1 rounded border border-red-500 mb-8">
+             <span className="text-red-500 font-bold text-sm sm:text-base whitespace-nowrap">RETRO (NO) ←</span>
+          </div>
 
-        {/* Detected Text Overlay */}
-        {detectedText && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-300">
-                <span className={`px-8 py-4 rounded-lg text-white font-bold text-3xl shadow-2xl ${
-                    detectedText.includes('SI') ? 'bg-green-600 bg-opacity-80' : 'bg-red-600 bg-opacity-80'
-                }`}>
-                    {detectedText}
-                </span>
-            </div>
-        )}
-
-        {/* Overlay with guide lines and text */}
-        <div className="absolute inset-0 flex justify-between items-center p-2 sm:p-4 pointer-events-none">
-            <div className="h-full flex items-center" style={{ width: '20%' }}>
-                <div className="w-full h-full border-r-2 border-red-500 border-dashed"></div>
-                <span className="absolute left-2 sm:left-4 top-4 text-white font-bold bg-black bg-opacity-50 p-2 rounded text-xs sm:text-base">RETRO (NO)</span>
-            </div>
-            <div className="h-full flex items-center" style={{ width: '20%' }}>
-                <div className="w-full h-full border-l-2 border-red-500 border-dashed"></div>
-                <span className="absolute right-2 sm:right-4 top-4 text-white font-bold bg-black bg-opacity-50 p-2 rounded text-xs sm:text-base">FRONTE (SI)</span>
-            </div>
+          {/* Vertical Text Stack */}
+          <div className="flex flex-col gap-6 items-center justify-center mt-4 opacity-60">
+             <span className="text-red-500 font-black text-2xl sm:text-3xl tracking-widest uppercase" style={{ textShadow: '2px 2px 4px black' }}>RETRO</span>
+             <span className="text-red-500 font-black text-xl sm:text-2xl tracking-widest uppercase" style={{ textShadow: '2px 2px 4px black' }}>INDIETRO</span>
+             <span className="text-red-500 font-black text-4xl sm:text-5xl tracking-widest uppercase" style={{ textShadow: '2px 2px 4px black' }}>NO</span>
+          </div>
         </div>
+        
+        {/* RIGHT SIDE - FRONTE (SI) */}
+        <div className="h-full relative flex flex-col items-center pt-4" style={{ width: '25%' }}>
+          {/* Vertical Dashed Line */}
+          <div className="absolute top-0 left-0 h-full w-0 border-l-2 border-green-500 border-dashed opacity-70"></div>
+          
+          {/* Top Label */}
+          <div className="bg-black bg-opacity-70 px-3 py-1 rounded border border-green-500 mb-8">
+             <span className="text-green-500 font-bold text-sm sm:text-base whitespace-nowrap">→ FRONTE (SI)</span>
+          </div>
 
-        {/* Dynamic blue circle to track shoulder movement */}
-        {shoulderPosition && (
-            <div 
-                className="absolute w-8 h-8 bg-blue-500 rounded-full border-2 border-white opacity-70 pointer-events-none transition-all duration-100 ease-linear"
-                style={{
-                    top: `calc(${shoulderPosition.y}% - 16px)`,
-                    left: `calc(${shoulderPosition.x}% - 16px)`,
-                }}
-            />
-        )}
+           {/* Vertical Text Stack */}
+           <div className="flex flex-col gap-6 items-center justify-center mt-4 opacity-60">
+             <span className="text-green-500 font-black text-2xl sm:text-3xl tracking-widest uppercase" style={{ textShadow: '2px 2px 4px black' }}>FRONTE</span>
+             <span className="text-green-500 font-black text-xl sm:text-2xl tracking-widest uppercase" style={{ textShadow: '2px 2px 4px black' }}>AVANTI</span>
+             <span className="text-green-500 font-black text-4xl sm:text-5xl tracking-widest uppercase" style={{ textShadow: '2px 2px 4px black' }}>SI</span>
+          </div>
+        </div>
       </div>
 
-      {/* Gauge Meter */}
-      <div className="h-8 w-full bg-gray-900 flex relative border-t border-gray-700">
-        {/* Center Line */}
-        <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-white z-10"></div>
-        
-        {/* Left Bar (Backward/NO) */}
-        <div className="w-1/2 flex justify-end bg-gray-800 h-full relative">
-            <div 
-                className="h-full bg-gradient-to-l from-red-500 to-red-700 transition-all duration-100 ease-out"
-                style={{ width: leftWidth }}
-            ></div>
-            <span className="absolute left-2 top-1 text-xs font-bold text-gray-400 uppercase">Indietro (NO)</span>
-        </div>
-
-        {/* Right Bar (Forward/SI) */}
-        <div className="w-1/2 flex justify-start bg-gray-800 h-full relative">
-            <div 
-                className="h-full bg-gradient-to-r from-green-500 to-green-700 transition-all duration-100 ease-out"
-                style={{ width: rightWidth }}
-            ></div>
-            <span className="absolute right-2 top-1 text-xs font-bold text-gray-400 uppercase">Avanti (SI)</span>
-        </div>
-      </div>
+      {/* Dynamic blue circle to track shoulder movement */}
+      {shoulderPosition && (
+        <div 
+            className="absolute w-6 h-6 bg-blue-500 rounded-full border-2 border-white opacity-80 pointer-events-none transition-all duration-75 ease-linear shadow-[0_0_10px_rgba(59,130,246,0.8)]"
+            style={{
+                top: `calc(${shoulderPosition.y}% - 12px)`,
+                left: `calc(${shoulderPosition.x}% - 12px)`,
+            }}
+        />
+      )}
     </div>
   );
 };

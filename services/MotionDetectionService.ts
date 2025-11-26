@@ -3,25 +3,24 @@ export class MotionDetectionService {
     private canvas: HTMLCanvasElement | null = null;
     private ctx: CanvasRenderingContext2D | null = null;
     private isDetecting = false;
-    private referenceFrame: ImageData | null = null; 
+    private referenceFrame: ImageData | null = null;
     private animationFrameId: number | null = null;
 
-    // ⬇️ PARAMETRI DI TOLLERANZA CALIBRATI
-    // Aumentato per ignorare piccoli movimenti (respiro, vestiti)
-    private movementThreshold = 1500; 
-    // Differenza di colore minima per considerare un pixel "cambiato" (ignora ombre leggere)
-    private pixelDiffThreshold = 20; 
-    // Area di interesse (ROI) - Focus sul busto centrale
-    private detectionArea = { x: 0.25, y: 0.2, width: 0.5, height: 0.6 }; 
+    // ⬇️ PARAMETRI CALIBRATI PER STABILITÀ
+    // Soglia aumentata per ignorare il respiro e i micro-movimenti (posizione neutra)
+    private movementThreshold = 2000; 
+    private pixelDiffThreshold = 15; 
+    
+    // Rapporto di dominanza: serve il 30% in più di movimento su un lato per confermare la direzione
+    private dominanceRatio = 1.3; 
 
-    // ⬇️ ZONA MORTA CENTRALE (Tolleranza oscillazione)
-    // Il baricentro del movimento deve spostarsi di almeno il 10% dal centro per essere valido
-    private deadZonePercent = 0.10; 
+    // Area di rilevamento: Focus sul busto (esclude testa e gambe)
+    private detectionArea = { x: 0.3, y: 0.2, width: 0.4, height: 0.6 };
 
-    // Filtro temporale (Debounce)
+    // Filtro temporale per stabilità
     private movementHistory: { direction: string; intensity: number }[] = [];
     private readonly historyLength = 6; 
-    private readonly trendThreshold = 4; // Richiede coerenza per 4 frame su 6
+    private readonly trendThreshold = 4;
 
     initialize(videoElement: HTMLVideoElement) {
         this.video = videoElement;
@@ -43,7 +42,7 @@ export class MotionDetectionService {
         this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
         this.referenceFrame = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
         
-        console.log("✅ Frame di riferimento impostato - utente fermo (Neutro)");
+        console.log("✅ Frame di riferimento impostato - ZERO (Neutro)");
     }
 
     startDetection() {
@@ -65,59 +64,46 @@ export class MotionDetectionService {
     private detectMovement = () => {
         if (!this.isDetecting || !this.video || !this.ctx || !this.canvas || !this.referenceFrame) return;
 
-        // Disegna frame attuale
         this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
         const currentFrame = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
 
-        // Analisi
+        // Analisi rispetto al frame ZERO (Reference)
         const analysisResult = this.analyzeOscillationFromReference(currentFrame, this.referenceFrame);
         
-        // Dispatch raw level for UI Gauge (feedback visivo)
-        // Se siamo nella zona morta, l'intensità visiva c'è ma la direzione è 'none'
-        window.dispatchEvent(new CustomEvent('movementLevel', {
-            detail: {
-                intensity: analysisResult.rawIntensity,
-                direction: analysisResult.direction
-            }
-        }));
-        
-        // Aggiungi alla storia solo se c'è un movimento significativo fuori dalla zona morta
-        if (analysisResult.direction !== 'none') {
-             this.movementHistory.push({ direction: analysisResult.direction, intensity: analysisResult.rawIntensity });
-        } else {
-             // Se siamo tornati neutri, pushiamo 'none' per rompere la catena di rilevamento precedente
-             this.movementHistory.push({ direction: 'none', intensity: 0 });
-        }
-
+        this.movementHistory.push({ direction: analysisResult.direction, intensity: analysisResult.intensity });
         if (this.movementHistory.length > this.historyLength) {
             this.movementHistory.shift();
         }
 
-        // Tracking centro movimento (per pallino blu UI)
-        if (analysisResult.center.x !== 0) {
+        if (analysisResult.center.x !== 0 && analysisResult.center.y !== 0) {
             window.dispatchEvent(new CustomEvent('movementCenterUpdate', {
                 detail: { center: analysisResult.center }
             }));
         }
         
-        // Analisi del Trend (conferma decisione)
         const trendMovement = this.analyzeMovementTrend();
         if (trendMovement.direction !== 'none') {
             window.dispatchEvent(new CustomEvent('movementDetected', {
                 detail: { direction: trendMovement.direction, intensity: trendMovement.intensity }
             }));
             
-            // Reset soft: svuota la storia per evitare rilevamenti doppi immediati, 
-            // ma NON resettare il frame di riferimento (perché l'utente potrebbe essere ancora sbilanciato)
+            // Soft reset dopo un rilevamento confermato per evitare doppi trigger immediati
+            // Ma NON resettiamo il referenceFrame, perché vogliamo mantenere lo zero assoluto
             this.movementHistory = []; 
         }
 
         this.animationFrameId = requestAnimationFrame(this.detectMovement);
     }
 
+    private getBrightness(r: number, g: number, b: number): number {
+        return 0.299 * r + 0.587 * g + 0.114 * b;
+    }
+
     private analyzeOscillationFromReference(currentFrame: ImageData, referenceFrame: ImageData): 
-    { direction: string; rawIntensity: number; center: {x: number, y: number} } {
+    { direction: string; intensity: number; center: {x: number, y: number} } {
         
+        let movimentoDestra = 0; // Raw Right Side
+        let movimentoSinistra = 0; // Raw Left Side
         let weightedX = 0;
         let weightedY = 0;
         let totalDiff = 0;
@@ -125,24 +111,26 @@ export class MotionDetectionService {
         const width = currentFrame.width;
         const height = currentFrame.height;
         
-        // Analizziamo solo la ROI (Region of Interest) centrale
         const startX = Math.floor(width * this.detectionArea.x);
         const startY = Math.floor(height * this.detectionArea.y);
         const endX = startX + Math.floor(width * this.detectionArea.width);
         const endY = startY + Math.floor(height * this.detectionArea.height);
+        const midX = startX + (endX - startX) / 2;
         
-        // Scansione pixel con passo 4 (ottimizzazione performance)
-        for (let y = startY; y < endY; y += 4) {
-            for (let x = startX; x < endX; x += 4) {
+        for (let y = startY; y < endY; y += 2) {
+            for (let x = startX; x < endX; x += 2) {
                 const i = (y * width + x) * 4;
 
-                // Calcolo luminosità (Grayscale)
-                const currLum = 0.299 * currentFrame.data[i] + 0.587 * currentFrame.data[i + 1] + 0.114 * currentFrame.data[i + 2];
-                const refLum = 0.299 * referenceFrame.data[i] + 0.587 * referenceFrame.data[i + 1] + 0.114 * referenceFrame.data[i + 2];
-                
-                const diff = Math.abs(currLum - refLum);
+                const currentBrightness = this.getBrightness(currentFrame.data[i], currentFrame.data[i + 1], currentFrame.data[i + 2]);
+                const referenceBrightness = this.getBrightness(referenceFrame.data[i], referenceFrame.data[i + 1], referenceFrame.data[i + 2]);
+                const diff = Math.abs(currentBrightness - referenceBrightness);
 
                 if (diff > this.pixelDiffThreshold) {
+                    if (x > midX) {
+                        movimentoDestra += diff; // Raw Right
+                    } else {
+                        movimentoSinistra += diff; // Raw Left
+                    }
                     weightedX += x * diff;
                     weightedY += y * diff;
                     totalDiff += diff;
@@ -150,50 +138,33 @@ export class MotionDetectionService {
             }
         }
         
-        let centerXPercent = 50; // Default centro
-        let centerYPercent = 50;
-
-        if (totalDiff > this.movementThreshold) {
-            // Calcolo Baricentro del Movimento
-            const avgX = weightedX / totalDiff;
-            const avgY = weightedY / totalDiff;
-            
-            // Normalizza in percentuale rispetto alla ROI
-            centerXPercent = ((avgX - startX) / (endX - startX)) * 100; // 0% sinistra ROI, 100% destra ROI
-            
-            // Coordinate globali schermo per UI (pallino blu)
-            const globalCenterX = (avgX / width) * 100;
-            const globalCenterY = (avgY / height) * 100;
-
-            // Logica Direzionale con ZONA MORTA
-            // Il centro della ROI è 50%.
-            // Deadzone: da (50 - deadZone) a (50 + deadZone)
-            const deadZoneLow = 50 - (this.deadZonePercent * 100);
-            const deadZoneHigh = 50 + (this.deadZonePercent * 100);
-
-            let direction = 'none';
-
-            // REVERT: Inversione logica su richiesta utente.
-            // Prima: Sinistra(<Low) = Forward, Destra(>High) = Backward.
-            // Ora: Sinistra(<Low) = Backward, Destra(>High) = Forward.
-            
-            if (centerXPercent < deadZoneLow) {
-                 // Baricentro spostato a Sinistra nel frame (specchiato) -> Interpretato come Indietro/NO
-                 direction = 'backward'; 
-            } else if (centerXPercent > deadZoneHigh) {
-                 // Baricentro spostato a Destra nel frame (specchiato) -> Interpretato come Avanti/SI
-                 direction = 'forward';
-            }
-
-            return { 
-                direction: direction, 
-                rawIntensity: totalDiff, 
-                center: { x: globalCenterX, y: globalCenterY } 
-            };
+        let centerX = 0, centerY = 0;
+        if (totalDiff > this.movementThreshold * 0.1) {
+            centerX = (weightedX / totalDiff / width) * 100;
+            centerY = (weightedY / totalDiff / height) * 100;
         }
 
-        // Sotto soglia movimento
-        return { direction: 'none', rawIntensity: 0, center: { x: 0, y: 0 } };
+        const totalMovement = movimentoDestra + movimentoSinistra;
+        
+        // Se il movimento totale è sotto la soglia (utente fermo/respiro), ritorna NONE
+        if (totalMovement < this.movementThreshold) {
+            return { direction: 'none', intensity: 0, center: { x: centerX, y: centerY } };
+        }
+        
+        // LOGICA DECISIONALE SPECCHIATA
+        // Utente fisico va a Destra (Avanti) -> Telecamera vede movimento a Sinistra (Raw Left) -> Video Specchio mostra a Destra
+        // Quindi: Dominanza Raw Sinistra = FORWARD (SI)
+        // Utente fisico va a Sinistra (Indietro) -> Telecamera vede movimento a Destra (Raw Right) -> Video Specchio mostra a Sinistra
+        // Quindi: Dominanza Raw Destra = BACKWARD (NO)
+        
+        if (movimentoSinistra > movimentoDestra * this.dominanceRatio) {
+            return { direction: 'forward', intensity: movimentoSinistra, center: { x: centerX, y: centerY } };
+        } else if (movimentoDestra > movimentoSinistra * this.dominanceRatio) {
+            return { direction: 'backward', intensity: movimentoDestra, center: { x: centerX, y: centerY } };
+        } else {
+            // Movimento ambiguo / centrale
+            return { direction: 'none', intensity: totalMovement, center: { x: centerX, y: centerY } };
+        }
     }
     
     private analyzeMovementTrend(): { direction: string; intensity: number } {
@@ -203,11 +174,9 @@ export class MotionDetectionService {
 
         const recentHistory = this.movementHistory.slice(-this.trendThreshold);
         const directions = recentHistory.map(m => m.direction);
-        
         const forwardCount = directions.filter(d => d === 'forward').length;
         const backwardCount = directions.filter(d => d === 'backward').length;
         
-        // Richiedi una maggioranza qualificata per confermare
         if (forwardCount >= this.trendThreshold) {
             return { direction: 'forward', intensity: 100 };
         }
