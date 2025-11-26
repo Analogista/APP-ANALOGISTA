@@ -4,8 +4,39 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="referrer" content="strict-origin-when-cross-origin">
+    <meta name="theme-color" content="#2563EB">
+    <link rel="manifest" href="/manifest.json">
     <title>Analogista Virtuale di Max Pisani</title>
+    
+    <!-- Google Fonts: Merriweather per i titoli (Eleganza/Psicologia) e Inter per i testi (Leggibilità) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400&display=swap" rel="stylesheet">
+    
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              serif: ['Merriweather', 'serif'],
+            },
+            colors: {
+              brand: {
+                50: '#eff6ff',
+                100: '#dbeafe',
+                500: '#3b82f6',
+                600: '#2563eb',
+                700: '#1d4ed8',
+                800: '#1e40af',
+                900: '#1e3a8a',
+              }
+            }
+          }
+        }
+      }
+    </script>
   <script type="importmap">
 {
   "imports": {
@@ -17,6 +48,12 @@
 }
 </script>
 <style>
+      body {
+        font-family: 'Inter', sans-serif;
+      }
+      h1, h2, h3, h4, h5, h6 {
+        font-family: 'Merriweather', serif;
+      }
       @keyframes bounce-short {
         0%, 100% {
           transform: translateY(0);
@@ -54,7 +91,7 @@
       }
 </style>
 </head>
-  <body class="bg-slate-100">
+  <body class="bg-slate-50">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

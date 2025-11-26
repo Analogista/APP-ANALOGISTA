@@ -29,12 +29,15 @@ const App: React.FC = () => {
   return (
     <UserProvider>
       <HeaderProvider>
-        <div className="max-w-4xl mx-auto font-sans pb-20">
-          <Header />
-          <main className="p-2 sm:p-4">
-            {renderContent()}
-          </main>
-          <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
+        {/* Sfondo Gradiente "Spirituale/Tecnologico" */}
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 font-sans pb-24 text-gray-800">
+          <div className="max-w-4xl mx-auto shadow-2xl min-h-screen bg-white/50 backdrop-blur-sm border-x border-white/50">
+            <Header />
+            <main className="p-3 sm:p-6 transition-all duration-300 ease-in-out">
+              {renderContent()}
+            </main>
+            <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
+          </div>
         </div>
       </HeaderProvider>
     </UserProvider>
